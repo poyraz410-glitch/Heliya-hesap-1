@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Helia Komisyon Hesaplayıcı</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: #f0f2f5; color: #1a1a1a; padding: 14px; max-width: 520px; margin: 0 auto; }
+    h1 { text-align: center; font-size: 1.35rem; margin-bottom: 12px; }
+    .kart { background: white; border-radius: 14px; padding: 18px; margin-bottom: 14px; box-shadow: 0 3px 10px rgba(0,0,0,0.07); }
+    .toplam { text-align: center; }
+    .toplam-label { font-size: 0.9rem; color: #666; }
+    .toplam-tutar { font-size: 2.3rem; font-weight: 700; color: #0d6efd; margin: 4px 0; }
+    label { display: block; font-size: 0.88rem; margin-bottom: 5px; color: #444; font-weight: 500; }
+    input, select { width: 100%; padding: 11px; border: 1px solid #ddd; border-radius: 9px; font-size: 1rem; margin-bottom: 12px; }
+    button { width: 100%; padding: 13px; border: none; border-radius: 9px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+    .btn-ekle { background: #0d6efd; color: white; margin-bottom: 8px; }
+    .btn-guncelle { background: #198754; color: white; margin-bottom: 8px; display: none; }
+    .btn-iptal { background: #6c757d; color: white; margin-bottom: 8px; display: none; }
+    .btn-sifirla { background: #dc3545; color: white; }
+    .gecmis { max-height: 380px; overflow-y: auto; }
+    .islem { padding: 12px 0; border-bottom: 1px solid #eee; font-size: 0.92rem; }
+    .islem:last-child { border-bottom: none; }
+    .islem-ust { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .islem-bilgi { flex: 1; }
+    .islem-tutar { font-weight: 600; white-space: nowrap; }
+    .pozitif { color: #198754; }
+    .negatif { color: #dc3545; }
+    .islem-alt { margin-top: 6px; display: flex; gap: 8px; }
+    .btn-kucuk { padding: 5px 10px; font-size: 0.8rem; border-radius: 6px; border: none; cursor: pointer; font-weight: 500; }
+    .btn-duzenle { background: #ffc107; color: #000; }
+    .btn-sil { background: #dc3545; color: white; }
+    .bos { text-align: center; color: #999; padding: 24px 0; }
+    .durum { text-align: center; font-size: 0.82rem; color: #666; margin-bottom: 10px; }
+    .musteri-adi { font-weight: 600; }
+    .tarih { color: #666; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <h1>Helia Komisyon Hesaplayıcı</h1>
+  <div class="durum" id="durum">Bağlanıyor...</div>
+
+  <!-- Toplam -->
+  <div class="kart toplam">
+    <div class="toplam-label">Toplam Alacak</div>
+    <div class="toplam-tutar" id="toplam">0,00 ₺</div>
+  </div>
+
+  <!-- Form -->
+  <div class="kart">
+    <label>Müşteri Adı Soyadı</label>
+    <input type="text" id="musteri" placeholder="Örn: Selin Göktaş" />
+
+    <label>Tarih</label>
+    <input type="date" id="tarih" />
+
+    <label>İşlem Türü</label>
+    <select id="tur">
+      <option value="97">Kendi Müşteri - Kart (%97)</option>
+      <option value="60">Helia Müşterisi (%60)</option>
+      <option value="5">Kendi Müşteri Helia İşlemi (%5)</option>
+      <option value="40">Helia %40 Kesinti (borç düş)</option>
+      <option value="odeme">Ödeme Alındı (Helia'dan gelen)</option>
+      <option value="100">Nakit / Tam Tutar</option>
+    </select>
+
+    <label>Tutar (₺)</label>
+    <input type="number" id="tutar" placeholder="Örn: 2500" step="0.01" />
+
+    <button class="btn-ekle" id="btnEkle" onclick="ekle()">Hesapla ve Ekle</button>
+    <button class="btn-guncelle" id="btnGuncelle" onclick="guncelle()">Güncelle</button>
+    <button class="btn-iptal" id="btnIptal" onclick="iptalDuzenle()">İptal</button>
+    <button class="btn-sifirla" onclick="sifirla()">Tümünü Sıfırla</button>
+  </div>
+
+  <!-- Geçmiş -->
+  <div class="kart">
+    <h3 style="margin-bottom:12px; font-size:1.05rem;">İşlem Geçmişi</h3>
+    <div class="gecmis" id="gecmis">
+      <div class="bos">Henüz işlem yok</div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyA3F9E-DdDsXNxfXi7WWNpuoSPJjUiC1c8",
+      authDomain: "onur-adisyon.firebaseapp.com",
+      databaseURL: "https://onur-adisyon-default-rtdb.firebaseio.com",
+      projectId: "onur-adisyon",
+      storageBucket: "onur-adisyon.firebasestorage.app",
+      messagingSenderId: "530322498456",
+      appId: "1:530322498456:web:25631fd938f798dd7441ed",
+      measurementId: "G-XDTD3JWHER"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const ref = db.ref("heliaHesap");
+
+    let islemler = [];
+    let duzenlenenId = null;
+
+    // Bugünün tarihini varsayılan yap
+    document.getElementById("tarih").valueAsDate = new Date();
+
+    // Verileri canlı dinle
+    ref.on("value", (snapshot) => {
+      const data = snapshot.val() || { islemler: [] };
+      islemler = data.islemler || [];
+      hesaplaToplam();
+      goster();
+      document.getElementById("durum").textContent = "Bağlı • Veriler senkron";
+    });
+
+    function hesaplaToplam() {
+      const toplam = islemler.reduce((acc, i) => acc + (i.kazanc || 0), 0);
+      document.getElementById("toplam").textContent =
+        toplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ₺";
+    }
+
+    function ekle() {
+      const musteri = document.getElementById("musteri").value.trim();
+      const tarih = document.getElementById("tarih").value;
+      const tur = document.getElementById("tur").value;
+      const tutar = parseFloat(document.getElementById("tutar").value.replace(",", "."));
+
+      if (!musteri) return alert("Müşteri adı girin!");
+      if (!tarih) return alert("Tarih seçin!");
+      if (!tutar || tutar <= 0) return alert("Geçerli tutar girin!");
+
+      let kazanc = 0;
+      let aciklama = "";
+
+      if (tur === "97") {
+        kazanc = tutar * 0.97;
+        aciklama = `Kendi müşteri kart (%97)`;
+      } else if (tur === "60") {
+        kazanc = tutar * 0.60;
+        aciklama = `Helia müşterisi (%60)`;
+      } else if (tur === "5") {
+        kazanc = tutar * 0.05;
+        aciklama = `Kendi müşteri Helia işlemi (%5)`;
+      } else if (tur === "40") {
+        kazanc = -(tutar * 0.40);
+        aciklama = `Helia %40 kesinti`;
+      } else if (tur === "odeme") {
+        kazanc = -tutar;
+        aciklama = `Ödeme alındı (Helia)`;
+      } else {
+        kazanc = tutar;
+        aciklama = `Nakit / Tam tutar`;
+      }
+
+      const yeni = {
+        id: Date.now().toString(),
+        musteri,
+        tarih,
+        tur,
+        tutar,
+        kazanc,
+        aciklama,
+        eklemeZamani: new Date().toLocaleString("tr-TR")
+      };
+
+      islemler.unshift(yeni);
+      kaydet();
+      formuTemizle();
+    }
+
+    function guncelle() {
+      if (!duzenlenenId) return;
+
+      const musteri = document.getElementById("musteri").value.trim();
+      const tarih = document.getElementById("tarih").value;
+      const tur = document.getElementById("tur").value;
+      const tutar = parseFloat(document.getElementById("tutar").value.replace(",", "."));
+
+      if (!musteri || !tarih || !tutar || tutar <= 0) {
+        return alert("Tüm alanları doldurun!");
+      }
+
+      let kazanc = 0;
+      let aciklama = "";
+
+      if (tur === "97") {
+        kazanc = tutar * 0.97;
+        aciklama = `Kendi müşteri kart (%97)`;
+      } else if (tur === "60") {
+        kazanc = tutar * 0.60;
+        aciklama = `Helia müşterisi (%60)`;
+      } else if (tur === "5") {
+        kazanc = tutar * 0.05;
+        aciklama = `Kendi müşteri Helia işlemi (%5)`;
+      } else if (tur === "40") {
+        kazanc = -(tutar * 0.40);
+        aciklama = `Helia %40 kesinti`;
+      } else if (tur === "odeme") {
+        kazanc = -tutar;
+        aciklama = `Ödeme alındı (Helia)`;
+      } else {
+        kazanc = tutar;
+        aciklama = `Nakit / Tam tutar`;
+      }
+
+      const index = islemler.findIndex(i => i.id === duzenlenenId);
+      if (index !== -1) {
+        islemler[index] = {
+          ...islemler[index],
+          musteri,
+          tarih,
+          tur,
+          tutar,
+          kazanc,
+          aciklama
+        };
+      }
+
+      kaydet();
+      iptalDuzenle();
+    }
+
+    function duzenle(id) {
+      const islem = islemler.find(i => i.id === id);
+      if (!islem) return;
+
+      duzenlenenId = id;
+      document.getElementById("musteri").value = islem.musteri;
+      document.getElementById("tarih").value = islem.tarih;
+      document.getElementById("tur").value = islem.tur;
+      document.getElementById("tutar").value = islem.tutar;
+
+      document.getElementById("btnEkle").style.display = "none";
+      document.getElementById("btnGuncelle").style.display = "block";
+      document.getElementById("btnIptal").style.display = "block";
+
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function sil(id) {
+      if (!confirm("Bu işlemi silmek istediğine emin misin?")) return;
+      islemler = islemler.filter(i => i.id !== id);
+      kaydet();
+    }
+
+    function iptalDuzenle() {
+      duzenlenenId = null;
+      formuTemizle();
+      document.getElementById("btnEkle").style.display = "block";
+      document.getElementById("btnGuncelle").style.display = "none";
+      document.getElementById("btnIptal").style.display = "none";
+    }
+
+    function formuTemizle() {
+      document.getElementById("musteri").value = "";
+      document.getElementById("tutar").value = "";
+      document.getElementById("tarih").valueAsDate = new Date();
+      document.getElementById("tur").value = "97";
+    }
+
+    function sifirla() {
+      if (confirm("TÜM işlemler silinecek. Emin misin?")) {
+        islemler = [];
+        kaydet();
+      }
+    }
+
+    function kaydet() {
+      ref.set({ islemler });
+    }
+
+    function goster() {
+      const liste = document.getElementById("gecmis");
+      if (islemler.length === 0) {
+        liste.innerHTML = '<div class="bos">Henüz işlem yok</div>';
+        return;
+      }
+
+      liste.innerHTML = islemler.map(i => `
+        <div class="islem">
+          <div class="islem-ust">
+            <div class="islem-bilgi">
+              <div class="musteri-adi">${i.musteri}</div>
+              <div class="tarih">${i.tarih} • ${i.aciklama}</div>
+              <div style="font-size:0.8rem;color:#888;margin-top:2px">${i.eklemeZamani || ""}</div>
+            </div>
+            <div class="islem-tutar ${i.kazanc >= 0 ? 'pozitif' : 'negatif'}">
+              ${i.kazanc >= 0 ? '+' : ''}${i.kazanc.toLocaleString("tr-TR", {minimumFractionDigits:2})} ₺
+            </div>
+          </div>
+          <div class="islem-alt">
+            <button class="btn-kucuk btn-duzenle" onclick="duzenle('${i.id}')">Düzenle</button>
+            <button class="btn-kucuk btn-sil" onclick="sil('${i.id}')">Sil</button>
+          </div>
+        </div>
+      `).join("");
+    }
+  </script>
+</body>
+</html>
